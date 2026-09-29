@@ -2,15 +2,19 @@ package passwordreset
 
 import (
 	"context"
+	"crypto/rand"
+	"crypto/sha256"
 	"database/sql"
+	"encoding/hex"
 	"errors"
 	"fmt"
+	"io"
 	"time"
 
 	"github.com/bootdotdev/learn-web-security/internal/database/dbgen"
 )
 
-const tokenTTL = 30 * 24 * time.Hour
+const tokenTTL = 15 * time.Minute
 
 type Token struct {
 	ID        int64
@@ -24,15 +28,20 @@ type Store struct {
 	database *sql.DB
 	queries  *dbgen.Queries
 	now      func() time.Time
+	random io.Reader
 }
 
 func NewStore(database *sql.DB) *Store {
-	return &Store{database: database, queries: dbgen.New(database), now: time.Now}
+	return &Store{database: database, queries: dbgen.New(database), now: time.Now, random: rand.Reader}
 }
 
 func (store *Store) Create(ctx context.Context, userID int64) (Token, error) {
 	now := store.now().UTC()
-	value := fmt.Sprintf("reset-%d-%d", userID, now.UnixNano())
+	tokenBytes := make([]byte, 32)
+	if _, err := io.ReadFull(store.random, tokenBytes); err != nil {
+		return Token{}, fmt.Errorf("Error: Generate passwrod reset token: %w", err)
+	}
+	value := hex.EncodeToString(tokenBytes)
 	expiresAt := now.Add(tokenTTL)
 	if err := store.queries.CreatePasswordResetToken(ctx, dbgen.CreatePasswordResetTokenParams{
 		UserID:    userID,
@@ -76,8 +85,8 @@ func (store *Store) ResetPassword(ctx context.Context, value, passwordHash strin
 	defer transaction.Rollback()
 	queries := store.queries.WithTx(transaction)
 	userID, err := queries.ConsumePasswordResetToken(ctx, dbgen.ConsumePasswordResetTokenParams{
-		Now:       &now,
 		TokenHash: hashToken(value),
+		Now: &now,
 	})
 	if errors.Is(err, sql.ErrNoRows) {
 		if commitErr := transaction.Commit(); commitErr != nil {
@@ -119,7 +128,9 @@ func (store *Store) ResetPassword(ctx context.Context, value, passwordHash strin
 }
 
 func hashToken(value string) string {
-	return value
+	sum := sha256.Sum256([]byte(value))
+	
+	return hex.EncodeToString(sum[:])
 }
 
 func formatTimestamp(timestamp time.Time) string {
