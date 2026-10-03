@@ -1,7 +1,9 @@
 package api
 
 import (
+	"fmt"
 	"net/http"
+	"strings"
 
 	"github.com/bootdotdev/learn-web-security/internal/accounts"
 	"github.com/bootdotdev/learn-web-security/internal/auth/sessions"
@@ -98,6 +100,21 @@ func (handler *Handler) WarehouseOrders(responseWriter http.ResponseWriter, requ
 	orders, err := handler.orderStore.ListAll(request.Context())
 	if err != nil {
 		handler.internalError(responseWriter, request, err)
+		return
+	}
+	apikey := request.Header.Get("X-API-KEY")
+
+	keyfound, found, err := handler.apiStore.FindKey(request.Context(), apikey)
+	if !found || err != nil {
+		httpx.RespondWithJSON(responseWriter, http.StatusUnauthorized, map[string]any{
+			"error": fmt.Errorf("Error finding key %v", err),
+		})
+		return
+	}
+	if !strings.Contains(keyfound.Scope, "orders:read") {
+		httpx.RespondWithJSON(responseWriter, http.StatusForbidden, map[string]any{
+			"error": "Does not have authroization for this operation",
+		})
 		return
 	}
 	responses := make([]integrationOrderResponse, 0, len(orders))
