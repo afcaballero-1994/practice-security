@@ -70,7 +70,7 @@ func RunSimulatedAssistant(ctx context.Context, request Request) (string, error)
 		return "Ask me about an order using its order number.", nil
 	}
 	userID, _ := requestedUserID(userMessage)
-	if strings.Contains(userMessage, "refund") {
+	if refundPattern.MatchString(userMessage) {
 		return "I cannot issue refunds. Please contact support.", nil
 	}
 	for _, tool := range request.Tools {
