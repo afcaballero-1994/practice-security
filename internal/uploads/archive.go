@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"mime"
 	"os"
 	"path/filepath"
@@ -90,6 +91,11 @@ func ExtractTaxDocumentArchive(encryptionKeyring Keyring, contents []byte, extra
 		storagePath := entryDestination
 		if encrypted {
 			storagePath += ".enc"
+		}
+		rsult, err := isInsideDirectory(importDirectory, storagePath)
+		if !rsult || entry.Mode().Type() & fs.ModeSymlink != 0 ||
+strings.Contains(storagePath, "\\") || filepath.IsAbs(entry.Name) || err != nil{
+	return ExtractedTaxDocumentArchive{}, fmt.Errorf("Invalid directory or symlink file %v", err)
 		}
 		plannedEntries = append(plannedEntries, plannedArchiveEntry{
 			destination: storagePath, contents: storedContents, encrypted: encrypted,
@@ -186,4 +192,16 @@ func discardArchiveAfterWriteFailure(archive ExtractedTaxDocumentArchive, err er
 		return ExtractedTaxDocumentArchive{}, errors.Join(err, discardErr)
 	}
 	return ExtractedTaxDocumentArchive{}, err
+}
+
+func isInsideDirectory(base, destination string) (bool, error) {
+	relativePath, err := filepath.Rel(base, destination)
+	if err != nil {
+		return false, err
+	}
+	if relativePath == "." || relativePath == ".." || strings.HasPrefix(relativePath, ".." + string(filepath.Separator)) ||
+filepath.IsAbs(relativePath) {
+	return false, errors.New("Archive entry escapes the extraction directory")
+	}
+	return true, nil
 }
