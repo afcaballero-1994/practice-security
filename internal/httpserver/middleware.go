@@ -9,6 +9,7 @@ import (
 	"math"
 	"net"
 	"net/http"
+	"net/url"
 	"slices"
 	"strconv"
 	"strings"
@@ -44,6 +45,36 @@ func permissiveCORS(next http.Handler) http.Handler {
 		}
 		next.ServeHTTP(responseWriter, request)
 	})
+}
+
+func validateRequestOrigin(origin string, tmpl *templates.Renderer) middleware {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(responseWriter http.ResponseWriter, request *http.Request){
+			if request.Method == http.MethodPost {
+				originReq := request.Header.Get("Origin")
+				if originReq == "" {
+					
+					parsed, err := url.Parse(request.Referer())
+					if err != nil || parsed.Scheme == "" || parsed.Host == ""{
+						err = httpx.RespondWithErrorPage(responseWriter, tmpl, http.StatusForbidden, "Origin", "Forbidden request")
+						if err != nil {
+							http.Error(responseWriter, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+						}
+						return
+					}
+					originReq = parsed.Scheme + "://"  + parsed.Host
+				}
+				if originReq != origin {
+					err := httpx.RespondWithErrorPage(responseWriter, tmpl, http.StatusForbidden, "Origin", "Forbidden request")
+					if err != nil {
+						http.Error(responseWriter, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+					}
+					return
+				}
+			}
+			next.ServeHTTP(responseWriter, request)
+		})
+	}
 }
 
 func cspNonce(next http.Handler) http.Handler {
