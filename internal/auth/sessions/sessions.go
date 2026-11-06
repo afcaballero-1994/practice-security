@@ -1,9 +1,11 @@
 package sessions
 
 import (
+	"crypto/subtle"
 	"net/http"
 	"net/url"
 	"time"
+	"unsafe"
 
 	"github.com/bootdotdev/learn-web-security/internal/accounts"
 )
@@ -37,8 +39,17 @@ func RequireWithReturnTo(responseWriter http.ResponseWriter, request *http.Reque
 	return accounts.CurrentSession{}, false, nil
 }
 
-func CSRFTokensMatch(_, _ string) bool {
-	return true
+func CSRFTokensMatch(expectedToken, actualToken string) bool {
+	if len(expectedToken) != len(actualToken) {
+		return false
+	}
+	expectedBytes := unsafe.Slice(unsafe.StringData(expectedToken), len(expectedToken))
+	actualBytes := unsafe.Slice(unsafe.StringData(actualToken), len(actualToken))
+	result := subtle.ConstantTimeCompare(expectedBytes, actualBytes)
+	if result == 1 {
+		return true
+	}
+	return false
 }
 
 func HasRecentAuthentication(current accounts.CurrentSession, now time.Time) bool {
