@@ -47,6 +47,14 @@ func permissiveCORS(next http.Handler) http.Handler {
 	})
 }
 
+func addCSP(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(responseWriter http.ResponseWriter, request *http.Request) {
+		responseWriter.Header().Set("Content-Security-Policy", `default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; frame-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'`)
+
+		next.ServeHTTP(responseWriter, request)
+	})
+}
+
 func validateRequestOrigin(origin string, tmpl *templates.Renderer) middleware {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(responseWriter http.ResponseWriter, request *http.Request){
